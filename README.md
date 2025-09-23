@@ -10,7 +10,7 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 1: Prompt
 - **Responsibilities**: Display a prompt showing the username, machine name, and current absolute working directory in the format USER@MACHINE:PWD> by expanding the corresponding environment variables. 
-- **Assigned to**: John Doe
+- **Assigned to**: Connor Cook
 
 ### Part 2: Environment Variables
 - **Responsibilities**: Expand tokens that begin with a dollar sign ($) into their corresponding environment variable values before command execution.
@@ -111,7 +111,7 @@ Each member records their contributions here.
 | Date       | Work Completed / Notes |
 |------------|------------------------|
 | 2025-09-23 | Initial project setup, Git repository configuration, and README updates.  |
-| YYYY-MM-DD | [Description of task]  |
+| 2025-09-23 | Completed Part 0: Tokenization and Part 1: Prompt.  |
 | YYYY-MM-DD | [Description of task]  |
 
 

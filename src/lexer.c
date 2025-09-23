@@ -2,11 +2,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h> // For gethostname()
 
 int main()
 {
 	while (1) {
-		printf("> ");
+		char *user = getenv("USER");
+        char *pwd = getenv("PWD");
+        char hostname[256]; // Buffer to hold the machine's name
+
+        // gethostname() is more reliable than getenv("HOSTNAME") or getenv("MACHINE")
+        if (gethostname(hostname, sizeof(hostname)) != 0) {
+            strncpy(hostname, "machine", sizeof(hostname) - 1); // Fallback name
+            hostname[sizeof(hostname) - 1] = '\0';
+        }
+
+        // Check that environment variables exist before printing
+        if (user && pwd) {
+            printf("%s@%s:%s> ", user, hostname, pwd);
+        } else {
+            printf("shell> "); // Fallback prompt
+        }
+        fflush(stdout); // Ensures the prompt appears immediately
 
 		/* input contains the whole command
 		 * tokens contains substrings from input split by spaces
