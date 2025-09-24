@@ -14,7 +14,7 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 2: Environment Variables
 - **Responsibilities**: Expand tokens that begin with a dollar sign ($) into their corresponding environment variable values before command execution.
-- **Assigned to**: Jane Smith
+- **Assigned to**: Jackson Luther
 
 ### Part 3: Tilde Expansion
 - **Responsibilities**: Expand tokens that are a standalone tilde (~) or begin with ~/ into the absolute path of the $HOME environment variable. 
@@ -137,3 +137,4 @@ Document in-person meetings, their purpose, and what was discussed.
 
 ## Considerations
 [Description]
+
