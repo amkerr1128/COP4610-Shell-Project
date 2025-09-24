@@ -4,6 +4,25 @@
 #include <string.h>
 #include <unistd.h> // For gethostname()
 
+void expand_env_variables(tokenlist *tokens)
+{
+    for (int i = 0; i < (int)tokens->size; i++) {
+        char *tok = tokens->items[i];
+        if (tok[0] == '$' && tok[1] != '\0') {
+            const char *varname = tok + 1;
+            const char *val = getenv(varname);
+            if (val == NULL) val = ""; /* replace with empty string if unset */
+            
+            /* Replace the token with the environment variable value */
+            size_t newlen = strlen(val);
+            char *newbuf = (char *)malloc(newlen + 1);
+            strcpy(newbuf, val);
+            free(tokens->items[i]);
+            tokens->items[i] = newbuf;
+        }
+    }
+}
+
 int main()
 {
 	while (1) {
@@ -30,9 +49,18 @@ int main()
 		 */
 
 		char *input = get_input();
+		if (input == NULL) {
+			/* EOF reached, exit the shell */
+			break;
+		}
+		
 		printf("whole input: %s\n", input);
 
 		tokenlist *tokens = get_tokens(input);
+		
+		/* Expand environment variables in tokens */
+		expand_env_variables(tokens);
+		
 		for (int i = 0; i < tokens->size; i++) {
 			printf("token %d: (%s)\n", i, tokens->items[i]);
 		}
@@ -48,10 +76,28 @@ char *get_input(void) {
 	char *buffer = NULL;
 	int bufsize = 0;
 	char line[5];
-	while (fgets(line, 5, stdin) != NULL)
+	
+	/* Handle EOF case - if fgets returns NULL immediately, return NULL */
+	if (fgets(line, 5, stdin) == NULL) {
+		return NULL;
+	}
+	
+	/* Process the first line */
+	int addby = 0;
+	char *newln = strchr(line, '\n');
+	if (newln != NULL)
+		addby = newln - line;
+	else
+		addby = 5 - 1;
+	buffer = (char *)realloc(buffer, bufsize + addby);
+	memcpy(&buffer[bufsize], line, addby);
+	bufsize += addby;
+	
+	/* Continue reading if no newline found (line was too long) */
+	while (newln == NULL && fgets(line, 5, stdin) != NULL)
 	{
-		int addby = 0;
-		char *newln = strchr(line, '\n');
+		addby = 0;
+		newln = strchr(line, '\n');
 		if (newln != NULL)
 			addby = newln - line;
 		else
@@ -62,6 +108,7 @@ char *get_input(void) {
 		if (newln != NULL)
 			break;
 	}
+	
 	buffer = (char *)realloc(buffer, bufsize + 1);
 	buffer[bufsize] = 0;
 	return buffer;
