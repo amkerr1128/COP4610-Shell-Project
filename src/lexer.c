@@ -23,6 +23,39 @@ void expand_env_variables(tokenlist *tokens)
     }
 }
 
+void expand_tilde(tokenlist *tokens) {
+    // Get the home directory path from the environment variables
+    char *home_dir = getenv("HOME");
+    if (home_dir == NULL) {
+        // If HOME is not set, we can't do expansion, so just return.
+        return;
+    }
+
+    // Loop through each token in the list
+    for (int i = 0; i < tokens->size; i++) {
+        // Case 1: The token is exactly "~"
+        if (strcmp(tokens->items[i], "~") == 0) {
+            free(tokens->items[i]); // Free the old "~" string
+            tokens->items[i] = (char *)malloc(strlen(home_dir) + 1);
+            strcpy(tokens->items[i], home_dir); // Replace with the home directory path
+        }
+        // Case 2: The token starts with "~/"
+        else if (strncmp(tokens->items[i], "~/", 2) == 0) {
+            // Construct the new, expanded path
+            char *rest_of_path = tokens->items[i] + 1; // Get the path part after the "~"
+            int new_path_len = strlen(home_dir) + strlen(rest_of_path) + 1;
+            char *new_path = (char *)malloc(new_path_len);
+            
+            // Copy the home directory and the rest of the path into the new string
+            strcpy(new_path, home_dir);
+            strcat(new_path, rest_of_path);
+
+            free(tokens->items[i]); // Free the old "~/path" string
+            tokens->items[i] = new_path; // Replace with the new, full path
+        }
+    }
+}
+
 int main()
 {
 	while (1) {
@@ -60,6 +93,9 @@ int main()
 		
 		/* Expand environment variables in tokens */
 		expand_env_variables(tokens);
+
+		/* Expand tildes in tokens */
+        expand_tilde(tokens);
 		
 		for (int i = 0; i < tokens->size; i++) {
 			printf("token %d: (%s)\n", i, tokens->items[i]);
