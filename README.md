@@ -18,7 +18,7 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 3: Tilde Expansion
 - **Responsibilities**: Expand tokens that are a standalone tilde (~) or begin with ~/ into the absolute path of the $HOME environment variable. 
-- **Assigned to**: Alex Brown
+- **Assigned to**: Connor Cook
 
 ### Part 4: $PATH Search
 - **Responsibilities**: For any command that does not contain a slash (/), search the directories listed in the $PATH environment variable to locate the executable. If the executable is not found, display a "command not found" error. 
@@ -112,7 +112,7 @@ Each member records their contributions here.
 |------------|------------------------|
 | 2025-09-23 | Initial project setup, Git repository configuration, and README updates.  |
 | 2025-09-23 | Completed Part 0: Tokenization and Part 1: Prompt.  |
-| YYYY-MM-DD | [Description of task]  |
+| 2025-09-25 | Completed Part 3: Tilde Expansion.  |
 
 
 ## Meetings
@@ -137,4 +137,5 @@ Document in-person meetings, their purpose, and what was discussed.
 
 ## Considerations
 [Description]
+
 
