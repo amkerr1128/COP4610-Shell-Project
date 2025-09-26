@@ -3,10 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>     // gethostname(), access()
-#include <sys/stat.h>   // stat()
+#include <unistd.h>     // gethostname(), access(), fork(), execv(), dup2(), close()
+#include <sys/stat.h>   // stat(), fstat(), S_ISREG
+#include <sys/wait.h>   // waitpid()
+#include <fcntl.h>      // open(), O_*
 #include <errno.h>
-#include <limits.h>     // PATH_MAX
+#include <limits.h>
 #include <stdbool.h>
 
 /* -------------------- Part 2: env expansion -------------------- */
@@ -17,10 +19,11 @@ void expand_env_variables(tokenlist *tokens)
         if (tok[0] == '$' && tok[1] != '\0') {
             const char *varname = tok + 1;
             const char *val = getenv(varname);
-            if (val == NULL) val = ""; /* replace with empty string if unset */
+            if (val == NULL) val = ""; /* empty if unset */
 
             size_t newlen = strlen(val);
             char *newbuf = (char *)malloc(newlen + 1);
+            if (!newbuf) continue;
             strcpy(newbuf, val);
             free(tokens->items[i]);
             tokens->items[i] = newbuf;
@@ -37,11 +40,13 @@ void expand_tilde(tokenlist *tokens) {
         if (strcmp(tokens->items[i], "~") == 0) {
             free(tokens->items[i]);
             tokens->items[i] = (char *)malloc(strlen(home_dir) + 1);
+            if (!tokens->items[i]) continue;
             strcpy(tokens->items[i], home_dir);
         } else if (strncmp(tokens->items[i], "~/", 2) == 0) {
             char *rest_of_path = tokens->items[i] + 1; // keep the '/'
             size_t newlen = strlen(home_dir) + strlen(rest_of_path) + 1;
             char *new_path = (char *)malloc(newlen);
+            if (!new_path) continue;
             strcpy(new_path, home_dir);
             strcat(new_path, rest_of_path);
             free(tokens->items[i]);
@@ -56,14 +61,12 @@ static bool is_regular_executable(const char *path) {
     struct stat st;
     if (stat(path, &st) != 0) return false;
     if (!S_ISREG(st.st_mode)) return false;
-    // access(X_OK) already checked by caller; this double-checks type
     return true;
 }
 
 static char *join_path(const char *dir, const char *cmd) {
-    /* Handles empty dir as "." (current directory) */
     const char *base = (dir && *dir) ? dir : ".";
-    size_t len = strlen(base) + 1 /* '/' */ + strlen(cmd) + 1 /* '\0' */;
+    size_t len = strlen(base) + 1 /* '/' */ + strlen(cmd) + 1;
     char *out = (char *)malloc(len);
     if (!out) return NULL;
     snprintf(out, len, "%s/%s", base, cmd);
@@ -71,7 +74,7 @@ static char *join_path(const char *dir, const char *cmd) {
 }
 
 bool is_builtin(const char *cmd) {
-    /* Placeholder for Part 9; update when built-ins are implemented */
+    /* Placeholder for Part 9; update later */
     (void)cmd;
     return false;
 }
@@ -79,17 +82,14 @@ bool is_builtin(const char *cmd) {
 char *resolve_path(const char *cmd) {
     if (!cmd || !*cmd) return NULL;
 
-    /* If command contains '/', don't search PATH—use as-is */
     if (strchr(cmd, '/')) {
-        /* Caller may want a private copy */
         char *cp = (char *)malloc(strlen(cmd) + 1);
         if (cp) strcpy(cp, cmd);
         return cp;
     }
 
     if (is_builtin(cmd)) {
-        /* Built-ins are handled internally, not via PATH */
-        return NULL;
+        return NULL; /* built-ins handled internally later */
     }
 
     const char *path = getenv("PATH");
@@ -114,7 +114,166 @@ char *resolve_path(const char *cmd) {
     }
 
     free(path_copy);
-    return NULL; /* not found */
+    return NULL;
+}
+
+/* -------------------- Part 6: I/O redirection -------------------- */
+
+/* Parse argv + find < and > filenames. Builds a new argv (without redir tokens). */
+static int parse_redirections(tokenlist *tokens,
+                              char ***out_argv,
+                              char **infile,
+                              char **outfile)
+{
+    *infile = NULL;
+    *outfile = NULL;
+
+    // First pass: count argv entries excluding redir tokens and their args
+    size_t argc_est = 0;
+    for (size_t i = 0; i < tokens->size; i++) {
+        const char *t = tokens->items[i];
+        if (strcmp(t, "<") == 0 || strcmp(t, ">") == 0) {
+            i++; // skip filename
+            continue;
+        }
+        argc_est++;
+    }
+
+    if (argc_est == 0) return -1;
+
+    char **argv = (char **)malloc(sizeof(char*) * (argc_est + 1));
+    if (!argv) return -1;
+
+    size_t k = 0;
+    for (size_t i = 0; i < tokens->size; i++) {
+        char *t = tokens->items[i];
+        if (strcmp(t, "<") == 0) {
+            if (i + 1 >= tokens->size) { free(argv); return -1; }
+            if (*infile != NULL) { free(argv); return -1; } // multiple inputs not supported
+            *infile = tokens->items[i+1];
+            i++;
+        } else if (strcmp(t, ">") == 0) {
+            if (i + 1 >= tokens->size) { free(argv); return -1; }
+            if (*outfile != NULL) { free(argv); return -1; } // multiple outputs not supported
+            *outfile = tokens->items[i+1];
+            i++;
+        } else {
+            argv[k++] = t; // just point into tokens storage
+        }
+    }
+    argv[k] = NULL;
+    *out_argv = argv;
+    return (int)k;
+}
+
+static int open_infile_ro(const char *path) {
+    // Must exist and be a regular file; open read-only, do not modify
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "Input: cannot open '%s': %s\n", path, strerror(errno));
+        return -1;
+    }
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        fprintf(stderr, "Input: cannot stat '%s': %s\n", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode)) {
+        fprintf(stderr, "Input: '%s' is not a regular file\n", path);
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int open_outfile_trunc_0600(const char *path) {
+    // Create/overwrite regular file, perms 0600 (-rw-------)
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        fprintf(stderr, "Output: cannot open '%s': %s\n", path, strerror(errno));
+        return -1;
+    }
+    // Ensure mode is exactly 0600 (in case umask altered it)
+    if (fchmod(fd, 0600) != 0) {
+        // Not fatal, but warn
+        // fprintf(stderr, "Warning: could not set mode 0600 on '%s'\n", path);
+    }
+    return fd;
+}
+
+int execute_external_with_redir(tokenlist *tokens) {
+    if (!tokens || tokens->size == 0) return -1;
+
+    char **argv = NULL;
+    char *infile = NULL;
+    char *outfile = NULL;
+
+    if (parse_redirections(tokens, &argv, &infile, &outfile) < 1) {
+        fprintf(stderr, "Parse error in redirection.\n");
+        return -1;
+    }
+
+    const char *cmd = argv[0];
+    char *prog_path = NULL;
+
+    if (strchr(cmd, '/')) {
+        prog_path = strdup(cmd);
+    } else {
+        prog_path = resolve_path(cmd);
+        if (!prog_path) {
+            fprintf(stderr, "%s: command not found\n", cmd);
+            free(argv);
+            return -1;
+        }
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        free(argv);
+        free(prog_path);
+        return -1;
+    }
+
+    if (pid == 0) {
+        /* --- Child: set up redirections in correct order (stdin first, then stdout) --- */
+        int infd = -1, outfd = -1;
+
+        if (infile) {
+            infd = open_infile_ro(infile);
+            if (infd < 0) _exit(1);
+            if (dup2(infd, STDIN_FILENO) < 0) {
+                perror("dup2 stdin");
+                _exit(1);
+            }
+            close(infd);
+        }
+
+        if (outfile) {
+            outfd = open_outfile_trunc_0600(outfile);
+            if (outfd < 0) _exit(1);
+            if (dup2(outfd, STDOUT_FILENO) < 0) {
+                perror("dup2 stdout");
+                _exit(1);
+            }
+            close(outfd);
+        }
+
+        execv(prog_path, argv);
+        perror("execv");
+        _exit(127);
+    }
+
+    /* --- Parent: wait (foreground) --- */
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        perror("waitpid");
+    }
+
+    free(argv);
+    free(prog_path);
+    return status;
 }
 
 /* -------------------- Main loop -------------------- */
@@ -136,44 +295,21 @@ int main()
         fflush(stdout);
 
         char *input = get_input();
-        if (input == NULL) break; /* EOF */
-
-        /* Debug: echo raw line */
-        /* printf("whole input: %s\n", input); */
+        if (input == NULL) break; /* EOF (Ctrl+D) */
 
         tokenlist *tokens = get_tokens(input);
 
-        /* Expansions (Parts 2–3) */
+        /* Parts 2–3 expansions */
         expand_env_variables(tokens);
         expand_tilde(tokens);
 
-        /* Debug: show tokens post-expansion */
-        for (int i = 0; i < (int)tokens->size; i++) {
-            printf("token %d: (%s)\n", i, tokens->items[i]);
-        }
-
-        /* ---- Part 4: PATH search demonstration ----
-         * If there is at least one token (command) and it does not contain '/',
-         * try resolving via PATH and report result (or error).
-         * (Execution will be added in later parts.)
-         */
         if (tokens->size > 0) {
             const char *cmd = tokens->items[0];
-
             if (!is_builtin(cmd)) {
-                /* Only search PATH for non-builtins with no '/' */
-                if (strchr(cmd, '/') == NULL) {
-                    char *resolved = resolve_path(cmd);
-                    if (resolved) {
-                        printf("resolved command: %s\n", resolved);
-                        free(resolved);
-                    } else {
-                        fprintf(stderr, "%s: command not found\n", cmd);
-                    }
-                } else {
-                    /* Has '/' — treat as direct path (exists/executable checked later) */
-                    printf("command has explicit path: %s\n", cmd);
-                }
+                (void)execute_external_with_redir(tokens);
+            } else {
+                /* built-ins will be added in Part 9 */
+                fprintf(stderr, "builtin not implemented yet\n");
             }
         }
 
@@ -184,7 +320,7 @@ int main()
     return 0;
 }
 
-/* -------------------- Provided helpers -------------------- */
+/* -------------------- Provided helpers (unchanged) -------------------- */
 
 char *get_input(void) {
     char *buffer = NULL;

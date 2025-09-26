@@ -3,3 +3,8 @@ obj/
 *.o
 *.out
 *.exe
+bin/
+obj/
+*.o
+*.out
+*.exe

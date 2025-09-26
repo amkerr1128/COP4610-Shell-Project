@@ -20,4 +20,7 @@ void expand_tilde(tokenlist *tokens);
 
 /* Part 4: PATH search */
 char *resolve_path(const char *cmd);  /* returns malloc'd string or NULL */
-bool  is_builtin(const char *cmd);    /* placeholder (returns false for now) */
+bool  is_builtin(const char *cmd);    /* placeholder (false for now) */
+
+/* Part 6: I/O redirection */
+int execute_external_with_redir(tokenlist *tokens); /* returns child status or -1 */

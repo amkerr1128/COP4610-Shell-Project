@@ -22,17 +22,17 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 4: $PATH Search
 - **Responsibilities**: For any command that does not contain a slash (/), search the directories listed in the $PATH environment variable to locate the executable. If the executable is not found, display a "command not found" error. 
-- **Assigned to**: Alex Brown, Jane Smith
+- **Assigned to**: Austin Kerr
 
 ### Part 5: External Command Execution
 - **Responsibilities**: Execute external commands and their arguments by creating a child process with fork() and running the command within the child process using execv(). 
-- **Assigned to**: Alex Brown, Jane Smith
+- **Assigned to**: Austin Kerr
 
 ### Part 6: I/O Redirection
 - **Responsibilities**: Implement I/O redirection for standard input from a file (<) and standard output to a file (>). Output redirection must create or overwrite files with 
 
 -rw------- permissions.
-- **Assigned to**: Jane Smith
+- **Assigned to**: Austin Kerr
 
 ### Part 7: Piping
 - **Responsibilities**: Implement command piping (|) for up to two pipes, redirecting the standard output of one command to the standard input of the next. Each command in the pipeline must run in its own process.
@@ -94,7 +94,7 @@ Each member records their contributions here.
 | Date       | Work Completed / Notes |
 |------------|------------------------|
 | 2025-09-25 | Completed Part 4/Updated parts 2 & 3: Resolved command path  |
-| YYYY-MM-DD | [Description of task]  |
+| 2025-09-25 | Completed Part 5 & 6: Implemented I/O redirection with permissions  |
 | YYYY-MM-DD | [Description of task]  |
 
 ### Jackson Luther

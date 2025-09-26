@@ -1,32 +1,36 @@
-SRC := src
-OBJ := obj
-BIN := bin
-EXECUTABLE:= shell
+SHELL    := /bin/bash
+CC       := gcc
+CFLAGS   := -Wall -Wextra -std=gnu99 -O2 -Iinclude
+LDFLAGS  :=
 
-SRCS := $(wildcard $(SRC)/*.c)
-OBJS := $(patsubst $(SRC)/%.c,$(OBJ)/%.o,$(SRCS))
-INCS := -Iinclude/
-DIRS := $(OBJ)/ $(BIN)/
-EXEC := $(BIN)/$(EXECUTABLE)
+SRC_DIR  := src
+OBJ_DIR  := obj
+BIN_DIR  := bin
+TARGET   := $(BIN_DIR)/shell
 
-CC := gcc
-CFLAGS := -g -Wall -std=gnu99 $(INCS)
-LDFLAGS :=
+SRCS     := $(wildcard $(SRC_DIR)/*.c)
+OBJS     := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
-all: $(EXEC)
+.PHONY: all run clean veryclean
 
-$(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) -o $(EXEC)
+all: $(TARGET)
 
-$(OBJ)/%.o: $(SRC)/%.c
+$(TARGET): $(BIN_DIR) $(OBJS)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-run: $(EXEC)
-	$(EXEC)
+$(OBJ_DIR) $(BIN_DIR):
+	mkdir -p $@
+
+run: $(TARGET)
+	@echo "Launching shell (Ctrl-D to exit)..."
+	@exec $(TARGET) </dev/tty >/dev/tty 2>&1
 
 clean:
-	rm $(OBJ)/*.o $(EXEC)
+	@rm -f $(OBJS) $(TARGET)
 
-$(shell mkdir -p $(DIRS))
-
-.PHONY: run clean all
+veryclean: clean
+	@rmdir --ignore-fail-on-non-empty $(OBJ_DIR) 2>/dev/null || true
+	@rmdir --ignore-fail-on-non-empty $(BIN_DIR) 2>/dev/null || true
