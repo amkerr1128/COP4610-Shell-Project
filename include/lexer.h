@@ -24,3 +24,17 @@ bool  is_builtin(const char *cmd);    /* placeholder (false for now) */
 
 /* Part 6: I/O redirection */
 int execute_external_with_redir(tokenlist *tokens); /* returns child status or -1 */
+
+/* Part 7: Piping */
+int execute_pipe_chain(tokenlist *tokens); /* returns status or -1 */
+
+/* Part 8: Background processing */
+typedef struct {
+    int job_num;
+    pid_t pid;
+    char *cmd_line;
+    bool is_done;
+} background_job;
+
+int execute_background(tokenlist *tokens); /* returns job number or -1 */
+void check_background_jobs(void); /* check for completed jobs */

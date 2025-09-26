@@ -276,12 +276,257 @@ int execute_external_with_redir(tokenlist *tokens) {
     return status;
 }
 
+/* -------------------- Part 7: Piping -------------------- */
+
+/* Parse tokens into separate commands separated by | */
+static int parse_pipe_commands(tokenlist *tokens, tokenlist **commands, int *num_commands) {
+    *num_commands = 0;
+    
+    // Count pipe separators
+    int pipe_count = 0;
+    for (size_t i = 0; i < tokens->size; i++) {
+        if (strcmp(tokens->items[i], "|") == 0) {
+            pipe_count++;
+        }
+    }
+    
+    // Maximum 2 pipes allowed (3 commands total)
+    if (pipe_count > 2) {
+        fprintf(stderr, "Too many pipes (max 2 allowed)\n");
+        return -1;
+    }
+    
+    *num_commands = pipe_count + 1;
+    commands[0] = new_tokenlist();
+    
+    int cmd_idx = 0;
+    for (size_t i = 0; i < tokens->size; i++) {
+        if (strcmp(tokens->items[i], "|") == 0) {
+            cmd_idx++;
+            commands[cmd_idx] = new_tokenlist();
+        } else {
+            add_token(commands[cmd_idx], tokens->items[i]);
+        }
+    }
+    
+    return 0;
+}
+
+/* Execute a chain of piped commands */
+int execute_pipe_chain(tokenlist *tokens) {
+    if (!tokens || tokens->size == 0) return -1;
+    
+    tokenlist *commands[3]; // Max 3 commands (2 pipes)
+    int num_commands = 0;
+    
+    if (parse_pipe_commands(tokens, commands, &num_commands) < 0) {
+        return -1;
+    }
+    
+    if (num_commands == 1) {
+        // No pipes, just execute normally
+        int result = execute_external_with_redir(commands[0]);
+        free_tokens(commands[0]);
+        return result;
+    }
+    
+    // Set up pipes
+    int pipes[2][2]; // [pipe_index][read_fd, write_fd]
+    
+    for (int i = 0; i < num_commands - 1; i++) {
+        if (pipe(pipes[i]) < 0) {
+            perror("pipe");
+            for (int j = 0; j < num_commands; j++) {
+                free_tokens(commands[j]);
+            }
+            return -1;
+        }
+    }
+    
+    // Fork processes for each command
+    pid_t pids[3];
+    
+    for (int i = 0; i < num_commands; i++) {
+        pids[i] = fork();
+        
+        if (pids[i] < 0) {
+            perror("fork");
+            // Clean up pipes
+            for (int j = 0; j < num_commands - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            for (int j = 0; j < num_commands; j++) {
+                free_tokens(commands[j]);
+            }
+            return -1;
+        }
+        
+        if (pids[i] == 0) {
+            // Child process
+            // Set up input redirection
+            if (i > 0) {
+                if (dup2(pipes[i-1][0], STDIN_FILENO) < 0) {
+                    perror("dup2 stdin");
+                    _exit(1);
+                }
+            }
+            
+            // Set up output redirection
+            if (i < num_commands - 1) {
+                if (dup2(pipes[i][1], STDOUT_FILENO) < 0) {
+                    perror("dup2 stdout");
+                    _exit(1);
+                }
+            }
+            
+            // Close all pipe fds
+            for (int j = 0; j < num_commands - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            
+            // Execute the command
+            execute_external_with_redir(commands[i]);
+            _exit(0);
+        }
+    }
+    
+    // Parent: close all pipe fds
+    for (int i = 0; i < num_commands - 1; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+    
+    // Wait for all children
+    int status;
+    for (int i = 0; i < num_commands; i++) {
+        waitpid(pids[i], &status, 0);
+    }
+    
+    // Clean up command tokens
+    for (int i = 0; i < num_commands; i++) {
+        free_tokens(commands[i]);
+    }
+    
+    return WEXITSTATUS(status);
+}
+
+/* -------------------- Part 8: Background Processing -------------------- */
+
+static background_job bg_jobs[10]; // Max 10 background jobs
+static int next_job_num = 1;
+
+/* Initialize background job tracking */
+static void init_background_jobs(void) {
+    for (int i = 0; i < 10; i++) {
+        bg_jobs[i].job_num = 0;
+        bg_jobs[i].pid = 0;
+        bg_jobs[i].cmd_line = NULL;
+        bg_jobs[i].is_done = false;
+    }
+}
+
+/* Find next available job slot */
+static int find_job_slot(void) {
+    for (int i = 0; i < 10; i++) {
+        if (bg_jobs[i].job_num == 0) {
+            return i;
+        }
+    }
+    return -1; // No available slots
+}
+
+/* Create command line string from tokens */
+static char *create_cmd_line(tokenlist *tokens) {
+    if (!tokens || tokens->size == 0) return NULL;
+    
+    size_t total_len = 0;
+    for (size_t i = 0; i < tokens->size; i++) {
+        total_len += strlen(tokens->items[i]) + 1; // +1 for space
+    }
+    
+    char *cmd_line = malloc(total_len);
+    if (!cmd_line) return NULL;
+    
+    cmd_line[0] = '\0';
+    for (size_t i = 0; i < tokens->size; i++) {
+        strcat(cmd_line, tokens->items[i]);
+        if (i < tokens->size - 1) {
+            strcat(cmd_line, " ");
+        }
+    }
+    
+    return cmd_line;
+}
+
+/* Execute command in background */
+int execute_background(tokenlist *tokens) {
+    if (!tokens || tokens->size == 0) return -1;
+    
+    int slot = find_job_slot();
+    if (slot < 0) {
+        fprintf(stderr, "Too many background jobs (max 10)\n");
+        return -1;
+    }
+    
+    // Create command line for display
+    char *cmd_line = create_cmd_line(tokens);
+    if (!cmd_line) return -1;
+    
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        free(cmd_line);
+        return -1;
+    }
+    
+    if (pid == 0) {
+        // Child process - execute the command
+        execute_pipe_chain(tokens);
+        _exit(0);
+    }
+    
+    // Parent process - track the job
+    bg_jobs[slot].job_num = next_job_num++;
+    bg_jobs[slot].pid = pid;
+    bg_jobs[slot].cmd_line = cmd_line;
+    bg_jobs[slot].is_done = false;
+    
+    printf("[%d] %d\n", bg_jobs[slot].job_num, pid);
+    
+    return bg_jobs[slot].job_num;
+}
+
+/* Check for completed background jobs */
+void check_background_jobs(void) {
+    for (int i = 0; i < 10; i++) {
+        if (bg_jobs[i].job_num > 0 && !bg_jobs[i].is_done) {
+            int status;
+            pid_t result = waitpid(bg_jobs[i].pid, &status, WNOHANG);
+            
+            if (result > 0) {
+                // Job completed
+                printf("[%d]+ done %s\n", bg_jobs[i].job_num, bg_jobs[i].cmd_line);
+                free(bg_jobs[i].cmd_line);
+                bg_jobs[i].job_num = 0;
+                bg_jobs[i].pid = 0;
+                bg_jobs[i].cmd_line = NULL;
+                bg_jobs[i].is_done = true;
+            }
+        }
+    }
+}
+
 /* -------------------- Main loop -------------------- */
 
 int main()
 {
-    while (1) {
-        char *user = getenv("USER");
+    /* Initialize background job tracking */
+    init_background_jobs();
+    
+	while (1) {
+		char *user = getenv("USER");
         char *pwd = getenv("PWD");
         char hostname[256];
 
@@ -294,10 +539,10 @@ int main()
         else             printf("shell> ");
         fflush(stdout);
 
-        char *input = get_input();
+		char *input = get_input();
         if (input == NULL) break; /* EOF (Ctrl+D) */
 
-        tokenlist *tokens = get_tokens(input);
+		tokenlist *tokens = get_tokens(input);
 
         /* Parts 2–3 expansions */
         expand_env_variables(tokens);
@@ -305,35 +550,55 @@ int main()
 
         if (tokens->size > 0) {
             const char *cmd = tokens->items[0];
+            
+            /* Check for background processing (&) */
+            bool is_background = false;
+            if (tokens->size > 1 && strcmp(tokens->items[tokens->size - 1], "&") == 0) {
+                is_background = true;
+                // Remove & from tokens
+                free(tokens->items[tokens->size - 1]);
+                tokens->size--;
+                tokens->items[tokens->size] = NULL;
+            }
+            
             if (!is_builtin(cmd)) {
-                (void)execute_external_with_redir(tokens);
+                if (is_background) {
+                    /* Part 8: Background processing */
+                    execute_background(tokens);
+                } else {
+                    /* Part 7: Piping (handles both piped and non-piped commands) */
+                    execute_pipe_chain(tokens);
+                }
             } else {
                 /* built-ins will be added in Part 9 */
                 fprintf(stderr, "builtin not implemented yet\n");
             }
         }
 
-        free(input);
-        free_tokens(tokens);
-    }
+        /* Check for completed background jobs */
+        check_background_jobs();
 
-    return 0;
+		free(input);
+		free_tokens(tokens);
+	}
+
+	return 0;
 }
 
 /* -------------------- Provided helpers (unchanged) -------------------- */
 
 char *get_input(void) {
-    char *buffer = NULL;
-    int bufsize = 0;
-    char line[5];
+	char *buffer = NULL;
+	int bufsize = 0;
+	char line[5];
 
     if (fgets(line, 5, stdin) == NULL) {
         return NULL;
     }
 
-    int addby = 0;
-    char *newln = strchr(line, '\n');
-    if (newln != NULL)
+		int addby = 0;
+		char *newln = strchr(line, '\n');
+		if (newln != NULL)
         addby = (int)(newln - line);
     else
         addby = 5 - 1;
@@ -347,56 +612,56 @@ char *get_input(void) {
         newln = strchr(line, '\n');
         if (newln != NULL)
             addby = (int)(newln - line);
-        else
-            addby = 5 - 1;
-        buffer = (char *)realloc(buffer, bufsize + addby);
-        memcpy(&buffer[bufsize], line, addby);
-        bufsize += addby;
-        if (newln != NULL)
-            break;
-    }
+		else
+			addby = 5 - 1;
+		buffer = (char *)realloc(buffer, bufsize + addby);
+		memcpy(&buffer[bufsize], line, addby);
+		bufsize += addby;
+		if (newln != NULL)
+			break;
+	}
 
-    buffer = (char *)realloc(buffer, bufsize + 1);
-    buffer[bufsize] = 0;
-    return buffer;
+	buffer = (char *)realloc(buffer, bufsize + 1);
+	buffer[bufsize] = 0;
+	return buffer;
 }
 
 tokenlist *new_tokenlist(void) {
-    tokenlist *tokens = (tokenlist *)malloc(sizeof(tokenlist));
-    tokens->size = 0;
-    tokens->items = (char **)malloc(sizeof(char *));
+	tokenlist *tokens = (tokenlist *)malloc(sizeof(tokenlist));
+	tokens->size = 0;
+	tokens->items = (char **)malloc(sizeof(char *));
     tokens->items[0] = NULL;
-    return tokens;
+	return tokens;
 }
 
 void add_token(tokenlist *tokens, char *item) {
     int i = (int)tokens->size;
 
-    tokens->items = (char **)realloc(tokens->items, (i + 2) * sizeof(char *));
-    tokens->items[i] = (char *)malloc(strlen(item) + 1);
-    tokens->items[i + 1] = NULL;
-    strcpy(tokens->items[i], item);
+	tokens->items = (char **)realloc(tokens->items, (i + 2) * sizeof(char *));
+	tokens->items[i] = (char *)malloc(strlen(item) + 1);
+	tokens->items[i + 1] = NULL;
+	strcpy(tokens->items[i], item);
 
-    tokens->size += 1;
+	tokens->size += 1;
 }
 
 tokenlist *get_tokens(char *input) {
-    char *buf = (char *)malloc(strlen(input) + 1);
-    strcpy(buf, input);
-    tokenlist *tokens = new_tokenlist();
-    char *tok = strtok(buf, " ");
-    while (tok != NULL)
-    {
-        add_token(tokens, tok);
-        tok = strtok(NULL, " ");
-    }
-    free(buf);
-    return tokens;
+	char *buf = (char *)malloc(strlen(input) + 1);
+	strcpy(buf, input);
+	tokenlist *tokens = new_tokenlist();
+	char *tok = strtok(buf, " ");
+	while (tok != NULL)
+	{
+		add_token(tokens, tok);
+		tok = strtok(NULL, " ");
+	}
+	free(buf);
+	return tokens;
 }
 
 void free_tokens(tokenlist *tokens) {
     for (int i = 0; i < (int)tokens->size; i++)
-        free(tokens->items[i]);
-    free(tokens->items);
-    free(tokens);
+		free(tokens->items[i]);
+	free(tokens->items);
+	free(tokens);
 }
