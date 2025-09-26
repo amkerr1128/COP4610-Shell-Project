@@ -11,6 +11,23 @@
 #include <limits.h>
 #include <stdbool.h>
 
+/* -------------------- Part 9: Command History -------------------- */
+#define HISTORY_SIZE 10
+static char *command_history[HISTORY_SIZE];
+static int history_count = 0;
+
+static void add_to_history(const char *cmd_line) {
+    if (history_count < HISTORY_SIZE) {
+        command_history[history_count++] = strdup(cmd_line);
+    } else {
+        free(command_history[0]);
+        for (int i = 1; i < HISTORY_SIZE; i++) {
+            command_history[i - 1] = command_history[i];
+        }
+        command_history[HISTORY_SIZE - 1] = strdup(cmd_line);
+    }
+}
+
 /* -------------------- Part 2: env expansion -------------------- */
 void expand_env_variables(tokenlist *tokens)
 {
@@ -74,8 +91,9 @@ static char *join_path(const char *dir, const char *cmd) {
 }
 
 bool is_builtin(const char *cmd) {
-    /* Placeholder for Part 9; update later */
-    (void)cmd;
+    if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "cd") == 0 || strcmp(cmd, "jobs") == 0) {
+        return true;
+    }
     return false;
 }
 
@@ -518,15 +536,93 @@ void check_background_jobs(void) {
     }
 }
 
+/* -------------------- Part 9: Internal Commands -------------------- */
+
+static void builtin_exit(void) {
+    // Wait for all background jobs to finish
+    for (int i = 0; i < 10; i++) {
+        if (bg_jobs[i].pid > 0) {
+            waitpid(bg_jobs[i].pid, NULL, 0);
+        }
+    }
+
+    // Display command history
+    printf("Last commands:\n");
+    if (history_count == 0) {
+        printf("No valid commands in history.\n");
+    } else {
+        int start = (history_count > 3) ? history_count - 3 : 0;
+        for (int i = start; i < history_count; i++) {
+            printf("%s\n", command_history[i]);
+        }
+    }
+    
+    // Free history memory before exiting
+    for (int i = 0; i < history_count; i++) {
+        free(command_history[i]);
+    }
+
+    exit(0);
+}
+
+static void builtin_cd(tokenlist *tokens) {
+    char *target_dir = NULL;
+
+    if (tokens->size == 1) {
+        // No arguments, cd to HOME
+        target_dir = getenv("HOME");
+        if (!target_dir) {
+            fprintf(stderr, "cd: HOME not set\n");
+            return;
+        }
+    } else if (tokens->size == 2) {
+        // One argument
+        target_dir = tokens->items[1];
+    } else {
+        // Too many arguments
+        fprintf(stderr, "cd: too many arguments\n");
+        return;
+    }
+
+    if (chdir(target_dir) != 0) {
+        // chdir failed, print error
+        perror("cd");
+    } else {
+        // On success, update the PWD environment variable
+        char cwd[PATH_MAX];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            setenv("PWD", cwd, 1);
+        }
+    }
+}
+
+static void builtin_jobs(void) {
+    bool found_job = false;
+    for (int i = 0; i < 10; i++) {
+        if (bg_jobs[i].job_num > 0) {
+            // Check if the job is still running before printing
+            int status;
+            pid_t result = waitpid(bg_jobs[i].pid, &status, WNOHANG);
+            if (result == 0) {
+                 printf("[%d]+ %d %s\n", bg_jobs[i].job_num, bg_jobs[i].pid, bg_jobs[i].cmd_line);
+                 found_job = true;
+            }
+        }
+    }
+    if (!found_job) {
+        printf("No active background jobs.\n");
+    }
+}
+
 /* -------------------- Main loop -------------------- */
 
 int main()
 {
     /* Initialize background job tracking */
     init_background_jobs();
-    
-	while (1) {
-		char *user = getenv("USER");
+
+    while (1) {
+        char *user = getenv("USER");
         char *pwd = getenv("PWD");
         char hostname[256];
 
@@ -539,10 +635,10 @@ int main()
         else             printf("shell> ");
         fflush(stdout);
 
-		char *input = get_input();
+        char *input = get_input();
         if (input == NULL) break; /* EOF (Ctrl+D) */
 
-		tokenlist *tokens = get_tokens(input);
+        tokenlist *tokens = get_tokens(input);
 
         /* Parts 2–3 expansions */
         expand_env_variables(tokens);
@@ -550,39 +646,47 @@ int main()
 
         if (tokens->size > 0) {
             const char *cmd = tokens->items[0];
-            
-            /* Check for background processing (&) */
+
+            // Add valid commands (non-empty) to history
+            if (strcmp(cmd, "") != 0) {
+                add_to_history(input);
+            }
+
             bool is_background = false;
-            if (tokens->size > 1 && strcmp(tokens->items[tokens->size - 1], "&") == 0) {
+            if (tokens->size > 0 && strcmp(tokens->items[tokens->size - 1], "&") == 0) {
                 is_background = true;
                 // Remove & from tokens
                 free(tokens->items[tokens->size - 1]);
                 tokens->size--;
                 tokens->items[tokens->size] = NULL;
             }
-            
-            if (!is_builtin(cmd)) {
-                if (is_background) {
-                    /* Part 8: Background processing */
-                    execute_background(tokens);
-                } else {
-                    /* Part 7: Piping (handles both piped and non-piped commands) */
-                    execute_pipe_chain(tokens);
+
+            if (is_builtin(cmd)) {
+                // --- NEW: Handle built-in commands ---
+                if (strcmp(cmd, "exit") == 0) {
+                    builtin_exit();
+                } else if (strcmp(cmd, "cd") == 0) {
+                    builtin_cd(tokens);
+                } else if (strcmp(cmd, "jobs") == 0) {
+                    builtin_jobs();
                 }
             } else {
-                /* built-ins will be added in Part 9 */
-                fprintf(stderr, "builtin not implemented yet\n");
+                if (is_background) {
+                    execute_background(tokens);
+                } else {
+                    execute_pipe_chain(tokens);
+                }
             }
         }
 
         /* Check for completed background jobs */
         check_background_jobs();
 
-		free(input);
-		free_tokens(tokens);
-	}
+        free(input);
+        free_tokens(tokens);
+    }
 
-	return 0;
+    return 0;
 }
 
 /* -------------------- Provided helpers (unchanged) -------------------- */

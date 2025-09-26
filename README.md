@@ -36,15 +36,15 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 7: Piping
 - **Responsibilities**: Implement command piping (|) for up to two pipes, redirecting the standard output of one command to the standard input of the next. Each command in the pipeline must run in its own process.
-- **Assigned to**: John Doe
+- **Assigned to**: Jackson Luther
 
 ### Part 8: Background Processing
 - **Responsibilities**: Implement background processing for commands ending with an ampersand (&). The shell should not wait for the command to finish and must print the job number and PID upon start, and a completion message when done.
-- **Assigned to**: Alex Brown, John Doe
+- **Assigned to**: Jackson Luther
 
 ### Part 9: Internal Command Execution
 - **Responsibilities**: Implement the built-in shell commands exit, cd, and jobs with all specified functionality, including argument handling and error reporting. 
-- **Assigned to**: Alex Brown
+- **Assigned to**: Connor Cook
 
 ### Part 10: External Timeout Executable
 - **Responsibilities**: Create a separate utility program that takes a timeout duration and a command as arguments, executes the command, and terminates it if it runs longer than the specified duration.
@@ -71,20 +71,16 @@ shell/
 ## How to Compile & Execute
 
 ### Requirements
-- **Compiler**: e.g., `gcc` for C/C++, `rustc` for Rust.
-- **Dependencies**: List any libraries or frameworks necessary (rust only).
+- **Compiler**: gcc
 
 ### Compilation
-For a C/C++ example:
 ```bash
 make
 ```
-This will build the executable in ...
 ### Execution
 ```bash
 make run
 ```
-This will run the program ...
 
 ## Development Log
 Each member records their contributions here.
@@ -95,16 +91,13 @@ Each member records their contributions here.
 |------------|------------------------|
 | 2025-09-25 | Completed Part 4/Updated parts 2 & 3: Resolved command path  |
 | 2025-09-25 | Completed Part 5 & 6: Implemented I/O redirection with permissions  |
-| YYYY-MM-DD | [Description of task]  |
 
 ### Jackson Luther
 
 | Date       | Work Completed / Notes |
 |------------|------------------------|
-| YYYY-MM-DD | [Description of task]  |
-| YYYY-MM-DD | [Description of task]  |
-| YYYY-MM-DD | [Description of task]  |
-
+| 2025-09-24 | Completed Part 2: Environment Variable Expansion  |
+| 2025-09-26 | Completed Parts 7 & 8: Piping and Background Processing  |
 
 ### Connor Cook
 
@@ -113,6 +106,7 @@ Each member records their contributions here.
 | 2025-09-23 | Initial project setup, Git repository configuration, and README updates.  |
 | 2025-09-23 | Completed Part 0: Tokenization and Part 1: Prompt.  |
 | 2025-09-25 | Completed Part 3: Tilde Expansion.  |
+| 2025-09-26 | Completed Part 9: Internal Command Execution.  |
 
 
 ## Meetings
