@@ -36,7 +36,7 @@ This project is a custom shell implementation for a Linux environment, created f
 
 ### Part 7: Piping
 - **Responsibilities**: Implement command piping (|) for up to two pipes, redirecting the standard output of one command to the standard input of the next. Each command in the pipeline must run in its own process.
-- **Assigned to**: John Doe
+- **Assigned to**: Jackson Luther
 
 ### Part 8: Background Processing
 - **Responsibilities**: Implement background processing for commands ending with an ampersand (&). The shell should not wait for the command to finish and must print the job number and PID upon start, and a completion message when done.
@@ -96,9 +96,9 @@ Each member records their contributions here.
 
 | Date       | Work Completed / Notes |
 |------------|------------------------|
-| YYYY-MM-DD | [Description of task]  |
-| YYYY-MM-DD | [Description of task]  |
-| YYYY-MM-DD | [Description of task]  |
+| 2025-09-24 | Completed Part 2: Environment Variables.  |
+| 2025-09-26 | Completed Part 7: Piping, supporting up to two pipes.  |
+| 2025-09-26 | Completed Part 8: Background processing and job management.  |
 
 
 ### Connor Cook
@@ -133,6 +133,7 @@ Document in-person meetings, their purpose, and what was discussed.
 
 ## Considerations
 [Description]
+
 
 
 
