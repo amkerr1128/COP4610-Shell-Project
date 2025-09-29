@@ -46,13 +46,9 @@ This project is a custom shell implementation for a Linux environment, created f
 - **Responsibilities**: Implement the built-in shell commands exit, cd, and jobs with all specified functionality, including argument handling and error reporting. 
 - **Assigned to**: Connor Cook
 
-### Part 10: External Timeout Executable
-- **Responsibilities**: Create a separate utility program that takes a timeout duration and a command as arguments, executes the command, and terminates it if it runs longer than the specified duration.
-- **Assigned to**: Alex Brown, Jane Smith
-
 ### Extra Credit
 - **Responsibilities**: Implement support for an unlimited number of pipes, allow piping and I/O redirection to be used within the same command, and enable the shell to be executed recursively from within itself.
-- **Assigned to**: Alex Brown
+- **Assigned to**:
 
 ## File Listing
 ```
@@ -60,10 +56,24 @@ shell/
 │
 ├── src/
 │ ├── main.c
-│ └── shell.c
+│ ├── builtins.c
+│ ├── history.c
+│ ├── bg.c
+│ ├── pipes.c
+│ ├── exec.c
+│ ├── path.c
+│ ├── expand.c
+│ └── tokens.c
 │
 ├── include/
-│ └── shell.h
+│ ├── builtins.h
+│ ├── history.h
+│ ├── bg.h
+│ ├── pipes.h
+│ ├── exec.h
+│ ├── path.h
+│ ├── expand.h
+│ └── tokens.h
 │
 ├── README.md
 └── Makefile
@@ -91,6 +101,7 @@ Each member records their contributions here.
 |------------|------------------------|
 | 2025-09-25 | Completed Part 4/Updated parts 2 & 3: Resolved command path  |
 | 2025-09-25 | Completed Part 5 & 6: Implemented I/O redirection with permissions  |
+| 2025-09-29 | Updated & completed README, restructured & organized src & include files  |
 
 ### Jackson Luther
 
@@ -116,15 +127,13 @@ Document in-person meetings, their purpose, and what was discussed.
 
 | Date       | Attendees            | Topics Discussed | Outcomes / Decisions |
 |------------|----------------------|------------------|-----------------------|
-| YYYY-MM-DD | [Names]              | [Agenda items]   | [Actions/Next steps]  |
-| YYYY-MM-DD | [Names]              | [Agenda items]   | [Actions/Next steps]  |
+| 2025-09-18 | Austin Kerr, Connor Cook, Jackson Luther | Planned project language, layout, schedule | Decided on C source files, confirmed project schedule & discussed work duties |
+| 2025-09-25 | Austin Kerr, Connor Cook, Jackson Luther | Discussed completed work, pushed finished parts to GitHub repo | Determined the rest of the project duties, refining project structure & finishing touches |
 
 
 
 ## Bugs
-- **Bug 1**: This is bug 1.
-- **Bug 2**: This is bug 2.
-- **Bug 3**: This is bug 3.
+- **Bug 1**: Had to reconfigure Makefile to compile & execute using commands on the rubric
 
 ## Extra Credit
 - **Extra Credit 1**: [Extra Credit Option]
